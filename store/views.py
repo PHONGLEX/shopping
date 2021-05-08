@@ -6,6 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from .models import *
+from .utils import cookieCart, cartData, guestOrder
 
 
 def store(request):
@@ -23,51 +24,20 @@ def store(request):
 
 def cart(request):
 
-	if request.user.is_authenticated:
-		customer = request.user.customer
-		order, created = Order.objects.get_or_create(customer=customer, complete=False)
-		items = order.orderitem_set.all()
-	else:
-		items = []
-		order = {'get_cart_items': 0, 'get_cart_total': 0, 'shipping': False}
-		try:
-			cart = json.loads(request.COOKIES.get('cart'))
-		except:
-			cart = {}
-		for key, value in cart.items():
-			product = Product.objects.get(id=int(key))
-			total = (product.price * value['quantity'])
+	data = cartData(request)
 
-			order['get_cart_total'] += total
-			order['get_cart_items'] += value['quantity']
-
-			item = {
-				'product': {
-					'id': product.id,
-					'name': product.name,
-					'price': product.price,
-					'imageURL': product.imageURL,
-				},
-				'quantity': value['quantity'],
-				'get_total': total
-			}
-			items.append(item)
-
-			if product.digital == False:
-				order['shipping'] = True
+	items = data.get("items")
+	order = data.get("order")
 
 	context = {'items': items, 'order': order}
 	return render(request, 'store/cart.html', context)
 
 
 def checkout(request):
-	if request.user.is_authenticated:
-		customer = request.user.customer
-		order, created = Order.objects.get_or_create(customer=customer, complete=False)
-		items = order.orderitem_set.all()
-	else:
-		items = []
-		order = {'get_cart_items': 0, 'get_cart_total': 0, 'shipping': False}
+	data = cartData(request)
+
+	items = data.get("items")
+	order = data.get("order")
 	context = {'items': items, 'order': order}
 	return render(request, 'store/checkout.html', context)
 
@@ -108,24 +78,26 @@ def processOrder(request):
 	if request.user.is_authenticated:
 		customer = request.user.customer
 		order, created = Order.objects.get_or_create(customer=customer, complete=False)
-		total = Decimal(data['form']['total'])
-		order.transaction_id = transaction_id
-
-		if total == Decimal(order.get_cart_total):
-			order.complete = True
-		order.save()
-
-		if order.shipping == True:
-			ShippingAddress.objects.create(
-				customer=customer,
-				order=order,
-				address=data['shipping']['address'],
-				city=data['shipping']['city'],
-				state=data['shipping']['state'],
-				zipcode=data['shipping']['zipcode'],
-				)
+		
 
 	else:
-		print("User is not logged in...")
+		customer, order = guestOrder(request, data)
+
+	total = Decimal(data['form']['total'])
+	order.transaction_id = transaction_id
+
+	if total == Decimal(order.get_cart_total):
+		order.complete = True
+	order.save()
+
+	if order.shipping == True:
+		ShippingAddress.objects.create(
+			customer=customer,
+			order=order,
+			address=data['shipping']['address'],
+			city=data['shipping']['city'],
+			state=data['shipping']['state'],
+			zipcode=data['shipping']['zipcode'],
+			)
 
 	return JsonResponse('Payment completed!', safe=False)

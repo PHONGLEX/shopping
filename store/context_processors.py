@@ -4,9 +4,13 @@ import json
 
 def cart_items(request):
 	if request.user.is_authenticated:
-		customer = request.user.customer
-		order, _ = Order.objects.get_or_create(customer=customer, complete=False)
-		return {'cart_items': order.get_cart_items}
+		try:
+			customer = request.user.customer
+			order, _ = Order.objects.get_or_create(customer=customer, complete=False)
+			return {'cart_items': order.get_cart_items}
+		except:
+			return {'cart_items': 0}
+		
 	else:
 		cart = None
 		items = 0
